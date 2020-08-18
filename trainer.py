@@ -56,11 +56,13 @@ class trainer:
                 output = self.model(data)
                 loss = self.lossfunc(output, labels)
                 train_epoch_loss += loss.item()
-                # _, preds = torch.max(output.data, 1)
+                _, preds = torch.max(output.data, 1)
+                train_epoch_acc += (preds == labels).sum().item()
                 loss.backward()
                 self.optimizer.step()
 
             train_epoch_loss /= idx
+            train_epoch_acc /= len(self.train_loader.dataset)
             val_epoch_loss, val_epoch_acc = self.eval(self.val_loader)
 
             if self.verbose:
@@ -75,11 +77,11 @@ class trainer:
             val_loss.append(val_epoch_loss)
             val_acc.append(val_epoch_acc)
 
-            if (epoch > 0 and val_loss[-2] < val_loss[-1]):
+            if (epoch > 0 and val_loss[-1] > best_loss):
                 es_counter += 1
-                
                 if es_counter == es_epochs:
                     print(f'==> Early stopping at epoch {epoch}')
+                    break
             else:
                 es_counter = 0
 
@@ -94,6 +96,10 @@ class trainer:
             plt.tight_layout()
             plt.show()
 
+        history = {'train loss': train_loss,
+                   'train acc': train_acc,
+                   'val loss': val_loss,
+                   'val acc': val_acc}
 
     def eval(self, data_loader):
         cum_loss = 0.0
@@ -111,12 +117,12 @@ class trainer:
                 cum_acc += (preds == labels).sum().item()
 
             cum_loss /= idx
-            cum_acc /= idx
+            cum_acc /= len(data_loader.dataset)
 
         return cum_loss, cum_acc
 
     def test(self):
-        print("=> Evaluating test dataset")
+        print("=> Evaluating on test dataset")
         self.model.load_state_dict(self.best_model)
         _, test_acc = self.eval(self.test_loader)
         print(f'\t Test accuracy: {test_acc}')
@@ -146,5 +152,5 @@ if __name__ == '__main__':
 
     trainer = trainer(train_set, val_set, test_set, model, optimizer, criterion,
                       device='cuda')
-    trainer.fit(liveplot = False)
+    trainer.fit(liveplot = True)
     trainer.test()

@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import torch
+from torch.utils.data import DataLoader
 
 class trainer:
     def __init__(self, train_set, test_set, val_set, model, optimizer, lossfunc,
@@ -13,34 +14,36 @@ class trainer:
             self.val_set = val_set
 
         self.test_set = test_set
-        self.model = model
+        self.model = model.to(device)
         self.optimizer = optimizer
         self.lossfunc = lossfunc
         self.device = device
         self.verbose = verbose
 
+        self.createDataloaders()
+
     def createDataloaders(self):
 
         print("=> Initializing dataloaders")
-        self.train_loader = torch.utils.DataLoader(self.train_set, 
-                                                   batch_size = self.batch_size,
-                                                   shuffle = True)
-        self.val_loader = torch.utils.DataLoader(self.val_set,
-                                                 batch_size = self.batch_size,
-                                                 shuffle = True)
-        self.test_loader = torch.utils.DataLoader(self.test_set,
-                                                  batch_size = self.batch_size,
-                                                  shuffle = True)
+        self.train_loader = DataLoader(self.train_set, batch_size = self.batch_size,
+                                       shuffle = True)
+        self.val_loader = DataLoader(self.val_set, batch_size = self.batch_size,
+                                     shuffle = True)
+        self.test_loader = DataLoader(self.test_set, batch_size = self.batch_size,
+                                      shuffle = True)
 
     def fit(self, epochs = 50, liveplot = False, early_stop = True, es_epochs=5):
-        train_loss = []
-        train_acc = []
-        val_loss = []
-        val_acc = []
+        train_loss, train_acc = [], []
+        val_loss, val_acc = [], []
+        epoch_arr = []
+
+        print("=> Beginning training")
+        self.model.train()
 
         for epoch in range(epochs):
             train_epoch_loss = 0.0
             train_epoch_acc = 0.0
+            epoch_arr.append(epoch)
 
             for idx, datum in enumerate(self.train_loader):
                 data, labels = datum[0].to(self.device), datum[1].to(self.device)
@@ -55,21 +58,34 @@ class trainer:
             train_epoch_loss /= idx
             val_epoch_loss, val_epoch_acc = self.eval(self.val_loader)
 
-            if verbose:
-                print(f'Epoch: {epoch:3d} Training Loss: {train_epoch_loss:.4f} \
-                      Validation Loss: {val_epoch_loss:.4f}') 
+            if self.verbose:
+                print(f'\tEpoch: {epoch:3d} Training Loss: {train_epoch_loss:.4f} Validation Loss: {val_epoch_loss:.4f}') 
 
             train_loss.append(train_epoch_loss)
             train_acc.append(train_epoch_acc)
             val_loss.append(val_epoch_loss)
             val_acc.append(val_epoch_acc)
 
+            if liveplot:
+                plt.cla()
+                plt.plot(epoch_arr, train_loss, label='train')
+                plt.plot(epoch_arr, val_loss, label='validation')
+                plt.legend(loc='upper left')
+                plt.pause(0.005)
+
+        if liveplot:
+            plt.tight_layout()
+            plt.show()
+
+
     def eval(self, data_loader):
         cum_loss = 0.0
         cum_acc = 0.0
 
+        self.model.eval()
+
         with torch.no_grad():
-            for idx, datum in enumerate(self.data_loader):
+            for idx, datum in enumerate(data_loader):
                 data, labels = datum[0].to(self.device), datum[1].to(self.device)
                 output = self.model(data)
                 loss = self.lossfunc(output, labels)
@@ -91,6 +107,7 @@ if __name__ == '__main__':
     from torchvision.models import vgg16
     import torch.nn as nn
     import torch.optim as optim
+    from models import VGG
 
 
     transform = transforms.Compose([transforms.ToTensor(),
@@ -102,8 +119,10 @@ if __name__ == '__main__':
     test_set = CIFAR10(root="./data/", train = False, download = True,
                       transform = transform)
 
-    model = vgg16(pretrained = False)
+    #model = vgg16(pretrained = False)
+    model = VGG('VGG16')
     optimizer = optim.SGD(model.parameters(), lr = 0.01, momentum = 0.9)
     criterion = nn.CrossEntropyLoss()
 
-    trainer = trainer(train_set, val_set, test_set, model, optimizer, criterion)
+    trainer = trainer(train_set, val_set, test_set, model, optimizer, criterion, device='cuda')
+    trainer.fit(liveplot = True)

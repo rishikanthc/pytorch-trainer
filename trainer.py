@@ -142,20 +142,22 @@ class trainer:
             os.mkdir(path)
 
         epoch_arr = list(range(len(self.history['train acc'])))
-        plt.figure()
+        plt.ioff()
+        fig = plt.figure()
         plt.plot(epoch_arr, self.history['train loss'], label = 'train')
         plt.plot(epoch_arr, self.history['val loss'], label = 'validation')
         plt.legend(loc = 'upper right')
         savepath = os.path.join(path, 'loss.png')
         plt.savefig(savepath)
+        plt.close(fig)
         
-        plt.figure()
+        fig = plt.figure()
         plt.plot(epoch_arr, self.history['train acc'], label = 'train')
         plt.plot(epoch_arr, self.history['val acc'], label = 'validation')
         plt.legend(loc = 'upper right')
         savepath = os.path.join(path, 'acc.png')
         plt.savefig(savepath)
-
+        plt.close(fig)
 
 if __name__ == '__main__':
     from torchvision import transforms

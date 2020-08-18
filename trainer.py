@@ -1,12 +1,14 @@
 import matplotlib
 matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
+plt.style.use('fivethirtyeight')
 import torch
 from torch.utils.data import DataLoader
+import os
 
 class trainer:
     def __init__(self, train_set, test_set, val_set, model, optimizer, lossfunc,
-                 device = 'cpu', verbose = True, batchsize = 256):
+                 device = 'cpu', verbose = True, batchsize = 256, savepath='./model'):
 
         print("=> Configuring parameters")
         self.batch_size = batchsize
@@ -22,6 +24,7 @@ class trainer:
         self.device = device
         self.verbose = verbose
         self.best_model = self.model.state_dict()
+        self.savepath = savepath
 
         self.createDataloaders()
 
@@ -35,7 +38,7 @@ class trainer:
         self.test_loader = DataLoader(self.test_set, batch_size = self.batch_size,
                                       shuffle = True)
 
-    def fit(self, epochs = 50, liveplot = False, early_stop = True, es_epochs=3):
+    def fit(self, epochs = 50, liveplot = False, early_stop = True, es_epochs=5):
         train_loss, train_acc = [], []
         val_loss, val_acc = [], []
         epoch_arr = []
@@ -66,7 +69,7 @@ class trainer:
             val_epoch_loss, val_epoch_acc = self.eval(self.val_loader)
 
             if self.verbose:
-                print(f'\tEpoch: {epoch:3d} Training Loss: {train_epoch_loss:.4f} Validation Loss: {val_epoch_loss:.4f}') 
+                print(f'\tEpoch: {epoch:3d} Training Loss: {train_epoch_loss:.4f} Validation Loss: {val_epoch_loss:.4f} Training Acc: {train_epoch_acc: .3f} Validation Acc: {val_epoch_acc: .3f}') 
 
             if val_epoch_loss < best_loss:
                 best_loss = val_epoch_loss
@@ -77,7 +80,7 @@ class trainer:
             val_loss.append(val_epoch_loss)
             val_acc.append(val_epoch_acc)
 
-            if (epoch > 0 and val_loss[-1] > best_loss):
+            if (epoch > 0 and val_loss[-1] > val_loss[-2]):
                 es_counter += 1
                 if es_counter == es_epochs:
                     print(f'==> Early stopping at epoch {epoch}')
@@ -96,10 +99,16 @@ class trainer:
             plt.tight_layout()
             plt.show()
 
-        history = {'train loss': train_loss,
-                   'train acc': train_acc,
-                   'val loss': val_loss,
-                   'val acc': val_acc}
+        self.history = {'train loss': train_loss, 'train acc': train_acc,
+                        'val loss': val_loss, 'val acc': val_acc}
+        
+        print("=> Saving model to file")
+        if not os.path.isdir(self.savepath):
+            os.mkdir(self.savepath)
+        savepath = os.path.join(self.savepath, 'trained_model')
+        torch.save(self.best_model, savepath)
+
+        return self.history
 
     def eval(self, data_loader):
         cum_loss = 0.0
@@ -127,6 +136,27 @@ class trainer:
         _, test_acc = self.eval(self.test_loader)
         print(f'\t Test accuracy: {test_acc}')
 
+    def genPlots(self, path='./plots/'):
+        print("=> Generating plots")
+        if not os.path.isdir(path):
+            os.mkdir(path)
+
+        epoch_arr = list(range(len(self.history['train acc'])))
+        plt.figure()
+        plt.plot(epoch_arr, self.history['train loss'], label = 'train')
+        plt.plot(epoch_arr, self.history['val loss'], label = 'validation')
+        plt.legend(loc = 'upper right')
+        savepath = os.path.join(path, 'loss.png')
+        plt.savefig(savepath)
+        
+        plt.figure()
+        plt.plot(epoch_arr, self.history['train acc'], label = 'train')
+        plt.plot(epoch_arr, self.history['val acc'], label = 'validation')
+        plt.legend(loc = 'upper right')
+        savepath = os.path.join(path, 'acc.png')
+        plt.savefig(savepath)
+
+
 if __name__ == '__main__':
     from torchvision import transforms
     from torchvision.datasets import CIFAR10
@@ -147,10 +177,11 @@ if __name__ == '__main__':
 
     #model = vgg16(pretrained = False)
     model = VGG('VGG16')
-    optimizer = optim.SGD(model.parameters(), lr = 0.01, momentum = 0.9)
+    optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9)
     criterion = nn.CrossEntropyLoss()
 
     trainer = trainer(train_set, val_set, test_set, model, optimizer, criterion,
                       device='cuda')
-    trainer.fit(liveplot = True)
+    history = trainer.fit(epochs = 10, liveplot = False, es_epochs = 5)
     trainer.test()
+    trainer.genPlots()

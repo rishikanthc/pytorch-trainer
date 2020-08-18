@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
@@ -19,6 +21,7 @@ class trainer:
         self.lossfunc = lossfunc
         self.device = device
         self.verbose = verbose
+        self.best_model = self.model.state_dict()
 
         self.createDataloaders()
 
@@ -32,10 +35,12 @@ class trainer:
         self.test_loader = DataLoader(self.test_set, batch_size = self.batch_size,
                                       shuffle = True)
 
-    def fit(self, epochs = 50, liveplot = False, early_stop = True, es_epochs=5):
+    def fit(self, epochs = 50, liveplot = False, early_stop = True, es_epochs=3):
         train_loss, train_acc = [], []
         val_loss, val_acc = [], []
         epoch_arr = []
+        best_loss = float('inf')
+        es_counter = 0
 
         print("=> Beginning training")
         self.model.train()
@@ -61,10 +66,22 @@ class trainer:
             if self.verbose:
                 print(f'\tEpoch: {epoch:3d} Training Loss: {train_epoch_loss:.4f} Validation Loss: {val_epoch_loss:.4f}') 
 
+            if val_epoch_loss < best_loss:
+                best_loss = val_epoch_loss
+                self.best_model = self.model.state_dict()
+
             train_loss.append(train_epoch_loss)
             train_acc.append(train_epoch_acc)
             val_loss.append(val_epoch_loss)
             val_acc.append(val_epoch_acc)
+
+            if (epoch > 0 and val_loss[-2] < val_loss[-1]):
+                es_counter += 1
+                
+                if es_counter == es_epochs:
+                    print(f'==> Early stopping at epoch {epoch}')
+            else:
+                es_counter = 0
 
             if liveplot:
                 plt.cla()
@@ -99,7 +116,10 @@ class trainer:
         return cum_loss, cum_acc
 
     def test(self):
-        return self.eval(self.test_loader)
+        print("=> Evaluating test dataset")
+        self.model.load_state_dict(self.best_model)
+        _, test_acc = self.eval(self.test_loader)
+        print(f'\t Test accuracy: {test_acc}')
 
 if __name__ == '__main__':
     from torchvision import transforms
@@ -124,5 +144,7 @@ if __name__ == '__main__':
     optimizer = optim.SGD(model.parameters(), lr = 0.01, momentum = 0.9)
     criterion = nn.CrossEntropyLoss()
 
-    trainer = trainer(train_set, val_set, test_set, model, optimizer, criterion, device='cuda')
-    trainer.fit(liveplot = True)
+    trainer = trainer(train_set, val_set, test_set, model, optimizer, criterion,
+                      device='cuda')
+    trainer.fit(liveplot = False)
+    trainer.test()
